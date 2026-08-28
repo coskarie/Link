@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>나만의 링크 보드</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px 20px;
+            margin: 0;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 40px;
+        }
+
+        /* 1열당 6개 배치 (모바일에서는 화면 크기에 맞게 자동 축소) */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 30px 40px;
+            max-width: 800px;
+            width: 100%;
+            justify-items: center;
+        }
+
+        @media (max-width: 768px) {
+            .grid-container {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+        @media (max-width: 480px) {
+            .grid-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        .link-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: #333;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .circle {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 10px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .link-wrapper:hover .circle {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+        }
+
+        .link-name {
+            font-size: 14px;
+            font-weight: 500;
+            text-align: center;
+            word-break: break-word;
+            width: 80px;
+        }
+
+        /* 삭제 버튼 (PC에서는 호버 시, 모바일에서는 항상 희미하게 표시) */
+        .delete-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: #ff4d4f;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .link-wrapper:hover .delete-btn {
+            display: flex;
+        }
+
+        /* 추가 버튼 전용 스타일 */
+        .add-btn .circle {
+            background-color: #007aff;
+            color: white;
+            font-size: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🚀 바로가기</h1>
+    
+    <div class="grid-container" id="board">
+        <!-- 자바스크립트로 링크들이 이 곳에 렌더링됩니다 -->
+    </div>
+
+    <!-- Firebase SDK 로드 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // ==========================================
+        // ⚠️ 아래 firebaseConfig를 본인의 설정으로 교체하세요!
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "본인의_API_KEY",
+            authDomain: "본인의_PROJECT.firebaseapp.com",
+            databaseURL: "https://본인의_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "본인의_PROJECT",
+            storageBucket: "본인의_PROJECT.appspot.com",
+            messagingSenderId: "본인의_SENDER_ID",
+            appId: "본인의_APP_ID"
+        };
+
+        // Firebase 초기화
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const linksRef = ref(db, 'links');
+
+        const board = document.getElementById('board');
+
+        // 1. 데이터베이스에서 실시간으로 데이터 불러오기
+        onValue(linksRef, (snapshot) => {
+            board.innerHTML = ''; // 보드 초기화
+            
+            const data = snapshot.val();
+            
+            // 기존 링크들 렌더링
+            if (data) {
+                Object.keys(data).forEach(key => {
+                    const link = data[key];
+                    createLinkElement(key, link.name, link.url);
+                });
+            }
+
+            // 마지막에 [+] 추가 버튼 렌더링
+            createAddButton();
+        });
+
+        // 링크 화면에 생성하는 함수
+        function createLinkElement(id, name, url) {
+            const wrapper = document.createElement('a');
+            wrapper.href = url;
+            wrapper.target = "_blank"; // 새 창에서 열기
+            wrapper.className = 'link-wrapper';
+
+            // 동그라미 안에 이름의 첫 글자를 표시
+            const initial = name.charAt(0).toUpperCase();
+
+            wrapper.innerHTML = `
+                <div class="circle">${initial}</div>
+                <div class="link-name">${name}</div>
+                <button class="delete-btn" data-id="${id}">✕</button>
+            `;
+
+            // 삭제 버튼 이벤트 처리
+            const deleteBtn = wrapper.querySelector('.delete-btn');
+            deleteBtn.addEventListener('click', (e) => {
+                e.preventDefault(); // 링크 이동 방지
+                if(confirm(`'${name}' 링크를 삭제하시겠습니까?`)) {
+                    remove(ref(db, `links/${id}`));
+                }
+            });
+
+            board.appendChild(wrapper);
+        }
+
+        // [+] 버튼 생성 함수
+        function createAddButton() {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'link-wrapper add-btn';
+            
+            wrapper.innerHTML = `
+                <div class="circle">+</div>
+                <div class="link-name">추가하기</div>
+            `;
+
+            // 추가 버튼 클릭 시 프롬프트 띄우고 DB에 저장
+            wrapper.addEventListener('click', () => {
+                const name = prompt("링크 이름을 입력하세요 (예: 네이버):");
+                if (!name) return;
+
+                let url = prompt("URL 주소를 입력하세요 (예: https://naver.com):");
+                if (!url) return;
+
+                // http가 없으면 자동으로 붙여주기
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+
+                // Firebase에 데이터 밀어넣기
+                push(linksRef, {
+                    name: name,
+                    url: url
+                });
+            });
+
+            board.appendChild(wrapper);
+        }
+    </script>
+</body>
+</html>
